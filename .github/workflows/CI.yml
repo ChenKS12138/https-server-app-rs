@@ -27,7 +27,7 @@ jobs:
     - name: Set Variables
       if: matrix.os == 'windows-latest'
       run: |
-        echo "VCPKGRS_DYNAMIC=1" >> $GITHUB_ENV
+        echo "VCPKGRS_DYNAMIC=1" | Out-File -FilePath $Env:GITHUB_ENV -Encoding utf-8 -Append
       
     - uses: actions-rs/toolchain@v1
       with:
