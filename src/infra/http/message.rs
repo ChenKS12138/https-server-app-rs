@@ -1,4 +1,9 @@
-use std::{collections::HashMap, fmt::Write, io};
+use openssl::ssl::SslStream;
+use rust_fsm::StateMachine;
+use std::{
+    collections::HashMap,
+    io::{Read, Write},
+};
 
 const HTTP_VERSION: &str = "1.1";
 
@@ -44,6 +49,7 @@ impl Response {
         }
     }
     pub fn to_bytes(&self) -> Result<Vec<u8>, Box<dyn std::error::Error>> {
+        use std::fmt::Write;
         let mut bytes_msg = String::new();
         bytes_msg.write_fmt(format_args!(
             "HTTP/{} {} {}\r\n",
@@ -75,17 +81,96 @@ impl HttpMessage for Response {
     }
 }
 
-pub fn consume<T: io::Write + io::Read>(
-    mut connection: T,
+pub fn consume<T: Write + Read>(
+    mut connection: SslStream<T>,
     on_data: fn(Request) -> Response,
 ) -> Result<(), Box<dyn std::error::Error>> {
-    let iter = connection.bytes();
-    for byte in iter {
-        let byte = byte?;
-        //
+    use super::fsm;
+
+    let mut machine: StateMachine<fsm::RequestParser> = StateMachine::new();
+    let mut body: Vec<u8> = Vec::new();
+    let mut headers: HashMap<String, String> = HashMap::new();
+    let mut header_field = String::new();
+    let mut header_value = String::new();
+    let mut method = String::new();
+    let mut path = String::new();
+    let mut version = String::new();
+    let rest_body_size = 0_u64;
+
+    let mut byte = [0_u8; 1];
+    loop {
+        if let Err(_) = connection.read_exact(&mut byte) {
+            return Ok(());
+        };
+        let byte = byte[0];
+
+        let effect = if rest_body_size == 0
+            && (machine.state() == &fsm::RequestParserState::Lf2
+                || machine.state() == &fsm::RequestParserState::Body)
+        {
+            machine.consume(&fsm::RequestParserInput::End)
+        } else {
+            match byte {
+                b' ' => machine.consume(&fsm::RequestParserInput::Blank),
+                b':' => machine.consume(&fsm::RequestParserInput::Colon),
+                b'\r' => machine.consume(&fsm::RequestParserInput::Cr),
+                b'\n' => machine.consume(&fsm::RequestParserInput::Lf),
+                _ => machine.consume(&fsm::RequestParserInput::Alpha),
+            }
+        };
+
+        match effect? {
+            Some(effect) => match effect {
+                fsm::RequestParserOutput::EffectAppendHeader => {
+                    headers.insert(header_field.clone(), header_value.clone());
+                }
+                fsm::RequestParserOutput::EffectAppendHeaderField => {
+                    header_field.push(char::from(byte));
+                }
+                fsm::RequestParserOutput::EffectAppendHeaderValue => {
+                    header_value.push(char::from(byte));
+                }
+                fsm::RequestParserOutput::EffectAppendMethod => {
+                    method.push(char::from(byte));
+                }
+                fsm::RequestParserOutput::EffectAppendPath => {
+                    path.push(char::from(byte));
+                }
+                fsm::RequestParserOutput::EffectAppendVersion => {
+                    version.push(char::from(byte));
+                }
+                _ => {
+                    if effect == fsm::RequestParserOutput::EffectAppendBody {
+                        body.push(byte);
+                    }
+                    if rest_body_size == 0 {
+                        let request = super::message::Request {
+                            body: body.clone(),
+                            headers: headers.clone(),
+                            method: method.clone(),
+                            path: path.clone(),
+                            version: version.clone(),
+                        };
+                        body = Vec::new();
+                        headers = HashMap::new();
+                        method = String::new();
+                        path = String::new();
+                        version = String::new();
+                        let response = on_data(request);
+                        connection.write_all(&(response.to_bytes()?))?;
+                        connection.flush()?;
+                        machine.consume(&fsm::RequestParserInput::End)?;
+                        connection.shutdown()?;
+                    }
+                }
+            },
+            _ => {
+                // do nothing
+            }
+        }
     }
-    Ok(())
 }
 
 #[cfg(test)]
 mod tests {}
+// sec-ch-ua

@@ -1,32 +1,49 @@
 use rust_fsm::*;
 
-// init
-// method
-// blank
-// url
-// blank
-// version
-// cr
-// lf
-// header_field
-// colon
-// header_value
-// body
-// end
-// failed
-
 state_machine! {
-    derive(Debug)
-    pub RequestParser(Closed)
-
-    Closed(Unsuccessful) => Open [SetupTimer],
-    Open(TimerTriggered) => HalfOpen,
-    HalfOpen => {
-        Successful => Closed,
-        Unsuccessful => Open [SetupTimer],
+    derive(Debug,PartialEq)
+    pub RequestParser(End)
+    End(Alpha) => Method[EffectAppendMethod],
+    Method => {
+        Alpha => Method[EffectAppendMethod],
+        Blank => Blank0
+    },
+    Blank0(Alpha) => Path[EffectAppendPath],
+    Path => {
+        Alpha => Path[EffectAppendPath],
+        Blank => Blank1
+    },
+    Blank1(Alpha) => Version[EffectAppendVersion],
+    Version => {
+        Alpha => Version[EffectAppendVersion],
+        Cr => Cr0
+    },
+    Cr0(Lf) => Lf0,
+    Lf0(Alpha) => HeaderField[EffectAppendHeaderField],
+    HeaderField => {
+        Alpha => HeaderField[EffectAppendHeaderField],
+        Colon => Colon0,
+    },
+    Colon0(Blank) => Blank2,
+    Blank2(Alpha) => HeaderValue[EffectAppendHeaderValue],
+    HeaderValue => {
+        Alpha => HeaderValue[EffectAppendHeaderValue],
+        Blank => HeaderValue[EffectAppendHeaderValue],
+        Colon => HeaderValue[EffectAppendHeaderValue],
+        Cr => Cr1[EffectAppendHeader]
+    },
+    Cr1(Lf) => Lf1,
+    Lf1 => {
+        Alpha => HeaderField[EffectAppendHeaderValue],
+        Cr => Cr2
+    },
+    Cr2(Lf) => Lf2[EffectCheckEnd],
+    Lf2 => {
+        Alpha => Body[EffectAppendBody],
+        End => End,
+    },
+    Body => {
+        Alpha => Body[EffectAppendBody],
+        End => End
     }
-}
-
-fn foo() {
-    let m: StateMachine<RequestParser> = StateMachine::new();
 }
