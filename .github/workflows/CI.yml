@@ -13,12 +13,20 @@ jobs:
   build:
     strategy:
         matrix:
-          os: [ubuntu-latest, macos-latest]
+          os: [ubuntu-latest, macos-latest, windows-latest]
 
     runs-on: ${{ matrix.os }}
 
     steps:
     - uses: actions/checkout@v2
+    
+    - name: Set vcpkg root
+      if: matrix.os == 'windows-latest'
+      run: echo "VCPKG_ROOT=$env:VCPKG_INSTALLATION_ROOT" | Out-File -FilePath $env:GITHUB_ENV -Append
+    - name: Install OpenSSL
+      if: matrix.os == 'windows-latest'
+      run: vcpkg install openssl:x64-windows
+      
     - uses: actions-rs/toolchain@v1
       with:
         profile: minimal
