@@ -25,7 +25,7 @@ jobs:
       run: vcpkg install openssl:x64-windows
     - name: Set OpenSSL Env
       if: matrix.os == 'windows-latest'
-      run: $env:OPENSSL_DIR = 'C:/vcpkg/packages/openssl_x86-windows/'
+      run: set VCPKGRS_DYNAMIC=1
       
     - uses: actions-rs/toolchain@v1
       with:
