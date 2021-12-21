@@ -20,14 +20,14 @@ jobs:
     steps:
     - uses: actions/checkout@v2
     
-    - name: Install OpenSSL
-      if: matrix.os == 'windows-latest'
-      run: vcpkg install openssl:x64-windows
-
     - name: Set Variables
       if: matrix.os == 'windows-latest'
       run: |
-        echo "VCPKGRS_DYNAMIC=1" | Out-File -FilePath $Env:GITHUB_ENV -Encoding utf-8 -Append
+        echo "VCPKG_ROOT=$env:VCPKG_INSTALLATION_ROOT" | Out-File -FilePath $env:GITHUB_ENV -Append
+        
+    - name: Install OpenSSL
+      if: matrix.os == 'windows-latest'
+      run: vcpkg install openssl:x64-windows
       
     - uses: actions-rs/toolchain@v1
       with:
