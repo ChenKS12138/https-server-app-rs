@@ -1,10 +1,11 @@
-use openssl::ssl::SslStream;
 use rust_fsm::StateMachine;
 use std::{
     collections::HashMap,
     io::{Read, Write},
     sync::Arc,
 };
+
+use super::fsm;
 pub type HandleFn = Box<Arc<dyn Fn(Request) -> Response + Send + Sync>>;
 
 const HTTP_VERSION: &str = "1.1";
@@ -86,96 +87,177 @@ impl HttpMessage for Response {
     }
 }
 
-pub fn consume<T: Write + Read>(
-    mut connection: SslStream<T>,
-    on_data: HandleFn,
-) -> Result<(), Box<dyn std::error::Error>> {
-    use super::fsm;
+struct Parser<'a, T: Read> {
+    readable: &'a mut T,
+    machine: StateMachine<fsm::RequestParser>,
+}
 
-    let mut machine: StateMachine<fsm::RequestParser> = StateMachine::new();
-    let mut body: Vec<u8> = Vec::new();
-    let mut headers: HashMap<String, String> = HashMap::new();
-    let mut header_field = String::new();
-    let mut header_value = String::new();
-    let mut method = String::new();
-    let mut path = String::new();
-    let mut version = String::new();
-    let rest_body_size = 0_u64;
+impl<'a, T: Read> Parser<'a, T> {
+    fn new(readable: &mut T) -> Parser<T> {
+        Parser {
+            readable,
+            machine: StateMachine::new(),
+        }
+    }
+    fn parse(&mut self) -> Result<Option<Request>, Box<dyn std::error::Error>> {
+        let mut body: Vec<u8> = Vec::new();
+        let mut headers: HashMap<String, String> = HashMap::new();
+        let mut header_field = String::new();
+        let mut header_value = String::new();
+        let mut method = String::new();
+        let mut path = String::new();
+        let mut version = String::new();
+        let mut rest_body_size = 0_u64;
 
-    let mut byte = [0_u8; 1];
-    loop {
-        if let Err(_) = connection.read_exact(&mut byte) {
-            return Ok(());
-        };
-        let byte = byte[0];
+        let mut byte = [0_u8; 1];
+        loop {
+            if let Err(_) = self.readable.read_exact(&mut byte) {
+                return Ok(None);
+            };
+            let byte = byte[0];
 
-        let effect = if rest_body_size == 0
-            && (machine.state() == &fsm::RequestParserState::Lf2
-                || machine.state() == &fsm::RequestParserState::Body)
-        {
-            machine.consume(&fsm::RequestParserInput::End)
-        } else {
-            match byte {
-                b' ' => machine.consume(&fsm::RequestParserInput::Blank),
-                b':' => machine.consume(&fsm::RequestParserInput::Colon),
-                b'\r' => machine.consume(&fsm::RequestParserInput::Cr),
-                b'\n' => machine.consume(&fsm::RequestParserInput::Lf),
-                _ => machine.consume(&fsm::RequestParserInput::Alpha),
-            }
-        };
+            let effect = if rest_body_size == 0
+                && (self.machine.state() == &fsm::RequestParserState::Lf2
+                    || self.machine.state() == &fsm::RequestParserState::Body)
+            {
+                self.machine.consume(&fsm::RequestParserInput::End)
+            } else {
+                match byte {
+                    b' ' => self.machine.consume(&fsm::RequestParserInput::Blank),
+                    b':' => self.machine.consume(&fsm::RequestParserInput::Colon),
+                    b'\r' => self.machine.consume(&fsm::RequestParserInput::Cr),
+                    b'\n' => self.machine.consume(&fsm::RequestParserInput::Lf),
+                    _ => self.machine.consume(&fsm::RequestParserInput::Alpha),
+                }
+            };
 
-        match effect? {
-            Some(effect) => match effect {
-                fsm::RequestParserOutput::EffectAppendHeader => {
-                    headers.insert(header_field.clone(), header_value.clone());
-                }
-                fsm::RequestParserOutput::EffectAppendHeaderField => {
-                    header_field.push(char::from(byte));
-                }
-                fsm::RequestParserOutput::EffectAppendHeaderValue => {
-                    header_value.push(char::from(byte));
-                }
-                fsm::RequestParserOutput::EffectAppendMethod => {
-                    method.push(char::from(byte));
-                }
-                fsm::RequestParserOutput::EffectAppendPath => {
-                    path.push(char::from(byte));
-                }
-                fsm::RequestParserOutput::EffectAppendVersion => {
-                    version.push(char::from(byte));
-                }
+            match effect? {
+                Some(effect) => match effect {
+                    fsm::RequestParserOutput::EffectAppendHeader => {
+                        headers.insert(header_field.clone(), header_value.clone());
+                        header_field.clear();
+                        header_value.clear();
+                    }
+                    fsm::RequestParserOutput::EffectAppendHeaderField => {
+                        header_field.push(char::from(byte));
+                    }
+                    fsm::RequestParserOutput::EffectAppendHeaderValue => {
+                        header_value.push(char::from(byte));
+                    }
+                    fsm::RequestParserOutput::EffectAppendMethod => {
+                        method.push(char::from(byte));
+                    }
+                    fsm::RequestParserOutput::EffectAppendPath => {
+                        path.push(char::from(byte));
+                    }
+                    fsm::RequestParserOutput::EffectAppendVersion => {
+                        version.push(char::from(byte));
+                    }
+                    _ => {
+                        match effect {
+                            fsm::RequestParserOutput::EffectCheckEnd => {
+                                if let Some(content_length) = headers.get("Content-Length") {
+                                    rest_body_size = content_length.parse().unwrap_or(0);
+                                }
+                            }
+                            fsm::RequestParserOutput::EffectAppendBody => {
+                                body.push(byte);
+                                rest_body_size -= 1;
+                            }
+                            _ => {}
+                        }
+                        if rest_body_size == 0 {
+                            let request = super::message::Request {
+                                body,
+                                headers,
+                                method,
+                                path,
+                                version,
+                            };
+                            self.machine.consume(&fsm::RequestParserInput::End)?;
+                            return Ok(Some(request));
+                        }
+                    }
+                },
                 _ => {
-                    if effect == fsm::RequestParserOutput::EffectAppendBody {
-                        body.push(byte);
-                    }
-                    if rest_body_size == 0 {
-                        let request = super::message::Request {
-                            body: body.clone(),
-                            headers: headers.clone(),
-                            method: method.clone(),
-                            path: path.clone(),
-                            version: version.clone(),
-                        };
-                        body = Vec::new();
-                        headers = HashMap::new();
-                        method = String::new();
-                        path = String::new();
-                        version = String::new();
-                        let response = on_data(request);
-                        connection.write_all(&(response.to_bytes()?))?;
-                        connection.flush()?;
-                        machine.consume(&fsm::RequestParserInput::End)?;
-                        connection.shutdown()?;
-                    }
+                    // do nothing
                 }
-            },
-            _ => {
-                // do nothing
             }
         }
     }
 }
 
+pub fn consume<T: Write + Read>(
+    connection: &mut T,
+    on_data: HandleFn,
+) -> Result<(), Box<dyn std::error::Error>> {
+    let mut parser = Parser::new(connection);
+    if let Some(request) = parser.parse().unwrap() {
+        let response = on_data(request);
+        connection.write_all(&response.to_bytes().unwrap())?;
+    }
+    Ok(())
+}
+
 #[cfg(test)]
-mod tests {}
-// sec-ch-ua
+mod tests {
+    use std::{
+        cmp,
+        io::{self, Read, Write},
+    };
+
+    use crate::infra::http::{
+        message::{HttpMessage, Parser},
+        method::{get_methods, Method},
+    };
+    struct StringStream {
+        data: Vec<u8>,
+        index: usize,
+    }
+    impl StringStream {
+        fn new(data: &'static str) -> StringStream {
+            StringStream {
+                data: Vec::from(data),
+                index: 0,
+            }
+        }
+    }
+
+    impl io::Read for StringStream {
+        fn read(&mut self, mut buf: &mut [u8]) -> io::Result<usize> {
+            let size = cmp::min(buf.len(), self.data.len() - self.index);
+            let result = buf.write(&self.data[self.index..(self.index + size)]);
+            self.index += size;
+            result
+        }
+    }
+
+    #[test]
+    fn parse_request_get() {
+        let mut readable = StringStream::new("GET / HTTP/1.1\r\nHost: 127.0.0.1:3000\r\nUser-Agent: curl/7.64.1\r\nAccept: */*\r\n\r\n");
+        let mut parser = Parser::new(&mut readable);
+        let request = parser.parse().unwrap().unwrap();
+        assert_eq!(get_methods(request.method.as_str()).unwrap(), Method::Get);
+        assert_eq!(request.path, "/");
+        assert_eq!(request.get_header("Host").unwrap(), "127.0.0.1:3000");
+        assert_eq!(request.get_header("User-Agent").unwrap(), "curl/7.64.1");
+        assert_eq!(request.get_header("Accept").unwrap(), "*/*");
+    }
+    #[test]
+    fn parse_request_post() {
+        let mut readable = StringStream::new("POST /user HTTP/1.1\r\nHost: 127.0.0.1:3000\r\nUser-Agent: curl/7.64.1\r\nAccept: */*\r\nContent-Type: application/json\r\nContent-Length: 23\r\n\r\n{\"name\":\"tom\",\"age\":21}");
+        let mut parser = Parser::new(&mut readable);
+        let request = parser.parse().unwrap().unwrap();
+        assert_eq!(get_methods(request.method.as_str()).unwrap(), Method::Post);
+        assert_eq!(request.path, "/user");
+        assert_eq!(request.get_header("Host").unwrap(), "127.0.0.1:3000");
+        assert_eq!(request.get_header("User-Agent").unwrap(), "curl/7.64.1");
+        assert_eq!(request.get_header("Accept").unwrap(), "*/*");
+        assert_eq!(
+            request.get_header("Content-Type").unwrap(),
+            "application/json"
+        );
+        assert_eq!(request.get_header("Content-Length").unwrap(), "23");
+        assert_eq!(request.body, Vec::from("{\"name\":\"tom\",\"age\":21}"));
+    }
+}

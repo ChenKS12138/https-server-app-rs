@@ -35,7 +35,7 @@ jobs:
         if: matrix.os == 'windows-latest'
         uses: actions/cache@v2
         with:
-          path: C:\vcpkg\
+          path: C:\vcpkg\packages\
           key: ${{ runner.os }}-${{ hashFiles('**/Cargo.lock') }}
 
       - name: Install OpenSSL
@@ -47,6 +47,9 @@ jobs:
           profile: minimal
           toolchain: stable
       - uses: Swatinem/rust-cache@v1
+
+      - name: test
+        run: cargo test --verbose
 
       - name: build
         run: cargo build --release --verbose

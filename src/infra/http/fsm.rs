@@ -34,7 +34,7 @@ state_machine! {
     },
     Cr1(Lf) => Lf1,
     Lf1 => {
-        Alpha => HeaderField[EffectAppendHeaderValue],
+        Alpha => HeaderField[EffectAppendHeaderField],
         Cr => Cr2
     },
     Cr2(Lf) => Lf2[EffectCheckEnd],
@@ -44,6 +44,10 @@ state_machine! {
     },
     Body => {
         Alpha => Body[EffectAppendBody],
+        Blank => Body[EffectAppendBody],
+        Colon => Body[EffectAppendBody],
+        Cr => Body[EffectAppendBody],
+        Lf => Body[EffectAppendBody],
         End => End
     }
 }

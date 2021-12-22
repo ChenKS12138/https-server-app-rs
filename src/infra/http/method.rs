@@ -1,9 +1,11 @@
 macro_rules! generate_methods {
     ($($name:ident,$value:expr)+) => {
         #[allow(dead_code)]
+        #[derive(Debug,PartialEq)]
         pub enum Method {
             $($name,)+
         }
+
 
         #[allow(dead_code)]
         pub fn get_methods(method:&str) -> Option<Method> {

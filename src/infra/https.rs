@@ -50,8 +50,9 @@ impl HttpsServer {
                         eprintln!("{:?}", connection.err());
                         return;
                     }
-                    let connection = connection.unwrap();
-                    infra::http::message::consume(connection, on_request).unwrap();
+                    let mut connection = connection.unwrap();
+                    infra::http::message::consume(&mut connection, on_request).unwrap();
+                    connection.shutdown().unwrap();
                 })
             }
         });
