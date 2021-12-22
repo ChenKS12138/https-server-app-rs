@@ -1,42 +1,6 @@
-use crate::infra::http::message::{HttpMessage, Request, Response};
+mod middleware;
+mod ui;
 
-use super::infra;
-use openssl::ssl::{SslAcceptor, SslFiletype, SslMethod};
-use std::net::TcpListener;
-use threadpool::ThreadPool;
-
-pub fn serve(
-    bind_addr: String,
-    cert: String,
-    key: String,
-) -> Result<(), Box<dyn std::error::Error>> {
-    let pool = ThreadPool::new(num_cpus::get());
-    let mut acceptor = SslAcceptor::mozilla_intermediate(SslMethod::tls()).unwrap();
-    acceptor
-        .set_private_key_file(key, SslFiletype::PEM)
-        .unwrap();
-    acceptor.set_certificate_chain_file(cert).unwrap();
-
-    let listener = TcpListener::bind(bind_addr)?;
-    let acceptor = acceptor.build();
-
-    for connection in listener.incoming() {
-        let connection = acceptor.accept(connection?);
-        pool.execute(move || {
-            if connection.is_err() {
-                eprintln!("{:?}", connection.err());
-                return;
-            }
-            let connection = connection.unwrap();
-            infra::http::message::consume(connection, |request: Request| -> Response {
-                println!("{}", request.path);
-                let mut resp = Response::new();
-                resp.set_body(&Vec::from("hello"));
-                resp.set_header("Content-Type", "text/plain");
-                resp
-            })
-            .unwrap();
-        })
-    }
-    Ok(())
+pub fn run() {
+    ui::launch();
 }

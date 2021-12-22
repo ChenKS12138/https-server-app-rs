@@ -1,6 +1,7 @@
 pub mod fsm;
 pub mod message;
 pub mod method;
+pub mod mime;
 pub mod status;
 
 #[derive(Debug)]

@@ -3,7 +3,9 @@ use rust_fsm::StateMachine;
 use std::{
     collections::HashMap,
     io::{Read, Write},
+    sync::Arc,
 };
+pub type HandleFn = Box<Arc<dyn Fn(Request) -> Response + Send + Sync>>;
 
 const HTTP_VERSION: &str = "1.1";
 
@@ -70,6 +72,9 @@ impl Response {
     pub fn set_body(&mut self, body: &Vec<u8>) {
         self.body = body.clone();
     }
+    pub fn set_code(&mut self, code: u16) {
+        self.code = code;
+    }
 }
 
 impl HttpMessage for Response {
@@ -83,7 +88,7 @@ impl HttpMessage for Response {
 
 pub fn consume<T: Write + Read>(
     mut connection: SslStream<T>,
-    on_data: fn(Request) -> Response,
+    on_data: HandleFn,
 ) -> Result<(), Box<dyn std::error::Error>> {
     use super::fsm;
 
