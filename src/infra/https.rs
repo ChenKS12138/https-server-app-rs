@@ -8,26 +8,48 @@ use threadpool::ThreadPool;
 
 use crate::infra::http::message::HandleFn;
 
+#[derive(Debug)]
+pub enum HttpsServerStatus {
+    Stopped,
+    Starting,
+    Started,
+    Stopping,
+}
+
+#[derive(Debug)]
 pub struct HttpsServer {
-    bind_addr: String,
-    cert: String,
-    key: String,
+    pub bind_addr: Option<String>,
+    pub cert: Option<String>,
+    pub key: Option<String>,
+    pub status: HttpsServerStatus,
     tx: Option<Sender<()>>,
 }
 
 impl HttpsServer {
-    pub fn new(bind_addr: String, cert: String, key: String) -> HttpsServer {
+    pub fn new() -> HttpsServer {
         HttpsServer {
-            bind_addr,
-            cert,
-            key,
+            bind_addr: None,
+            cert: None,
+            key: None,
+            status: HttpsServerStatus::Stopped,
             tx: None,
         }
     }
     pub fn launch(&mut self, on_request: HandleFn) -> Result<(), Box<dyn std::error::Error>> {
         assert!(self.tx.is_none());
+        self.status = HttpsServerStatus::Starting;
         let (tx, rx) = channel();
-        let (bind_addr, cert, key) = (self.bind_addr.clone(), self.cert.clone(), self.key.clone());
+        let (bind_addr, cert, key) = (
+            self.bind_addr
+                .clone()
+                .ok_or(infra::http::Error::new("no bind_addr"))?,
+            self.cert
+                .clone()
+                .ok_or(infra::http::Error::new("no bind_addr"))?,
+            self.key
+                .clone()
+                .ok_or(infra::http::Error::new("no bind_addr"))?,
+        );
         std::thread::spawn(move || {
             let pool = ThreadPool::new(num_cpus::get());
             let mut acceptor = SslAcceptor::mozilla_intermediate(SslMethod::tls()).unwrap();
@@ -57,11 +79,14 @@ impl HttpsServer {
             }
         });
         self.tx = Some(tx);
+        self.status = HttpsServerStatus::Started;
         Ok(())
     }
     pub fn shutdown(&mut self) -> Result<(), SendError<()>> {
+        self.status = HttpsServerStatus::Stopping;
         let result = self.tx.as_ref().unwrap().send(());
         self.tx = None;
+        self.status = HttpsServerStatus::Stopped;
         result
     }
 }

@@ -15,4 +15,10 @@ impl std::fmt::Display for Error {
     }
 }
 
+impl Error {
+    pub fn new(message: &'static str) -> Error {
+        Error { message }
+    }
+}
+
 impl std::error::Error for Error {}
