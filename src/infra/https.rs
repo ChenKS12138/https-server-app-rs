@@ -26,8 +26,8 @@ pub struct HttpsServer {
 }
 
 impl HttpsServer {
-    pub fn new() -> HttpsServer {
-        HttpsServer {
+    pub fn new() -> Self {
+        Self {
             bind_addr: None,
             cert: None,
             key: None,

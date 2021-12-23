@@ -1,4 +1,4 @@
-pub mod fsm;
+pub mod form_data;
 pub mod message;
 pub mod method;
 pub mod mime;
@@ -16,8 +16,8 @@ impl std::fmt::Display for Error {
 }
 
 impl Error {
-    pub fn new(message: &'static str) -> Error {
-        Error { message }
+    pub fn new(message: &'static str) -> Self {
+        Self { message }
     }
 }
 

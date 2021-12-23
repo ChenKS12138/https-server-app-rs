@@ -2,7 +2,7 @@ use rust_fsm::*;
 
 state_machine! {
     derive(Debug,PartialEq)
-    pub RequestParser(End)
+    pub RequestMessage(End)
     End(Alpha) => Method[EffectAppendMethod],
     Method => {
         Alpha => Method[EffectAppendMethod],

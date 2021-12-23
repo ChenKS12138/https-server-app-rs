@@ -1,13 +1,15 @@
 use std::collections::HashMap;
 
+pub type Status = u16;
+
 macro_rules! generate_status {
     ($($name:ident => $code:expr,$reason:expr)+) => {
         $(
             #[allow(dead_code)]
-            pub const $name:u16 = $code;
+            pub const $name:Status = $code;
         )+
         lazy_static! {
-            static ref REASON_MAP: HashMap<u16,&'static str> = [
+            static ref REASON_MAP: HashMap<Status,&'static str> = [
                 $(($code,$reason),)+
             ].iter().copied().collect();
         }
@@ -78,6 +80,6 @@ generate_status! {
 }
 
 #[allow(dead_code)]
-pub fn get_code_reason(code: u16) -> Option<&'static str> {
+pub fn get_code_reason(code: Status) -> Option<&'static str> {
     Some(REASON_MAP.get(&code)?)
 }

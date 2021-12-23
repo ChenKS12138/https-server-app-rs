@@ -4,27 +4,9 @@ use std::rc::Rc;
 use fltk::dialog::{self, NativeFileChooser};
 
 use crate::app::middleware;
-use crate::infra::https::HttpsServer;
+use crate::app::state::AppState;
 
-#[derive(Debug)]
-struct AppState {
-    server: HttpsServer,
-    root_directory: Option<String>,
-}
-
-impl AppState {
-    fn new() -> AppState {
-        AppState {
-            server: HttpsServer::new(),
-            root_directory: None,
-        }
-    }
-}
-
-pub fn launch() {
-    // let entry = middleware::static_middleware(String::from("."));
-    let state = Rc::new(RefCell::new(AppState::new()));
-
+pub fn launch(state: Rc<RefCell<AppState>>) {
     use fltk::{app, button::Button, frame::Frame, prelude::*, window::Window};
     let app = fltk::app::App::default().with_scheme(app::Scheme::Gtk);
     let mut wind = Window::new(100, 100, 400, 300, "基于OpenSSL的安全Web服务器程序");

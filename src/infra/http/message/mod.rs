@@ -1,12 +1,15 @@
+mod fsm;
+
 use rust_fsm::StateMachine;
 use std::{
+    cell::RefCell,
     collections::HashMap,
     io::{Read, Write},
+    rc::Rc,
     sync::Arc,
 };
 
-use super::fsm;
-pub type HandleFn = Box<Arc<dyn Fn(Request) -> Response + Send + Sync>>;
+pub type HandleFn = Box<Arc<dyn Fn(Rc<RefCell<Request>>) -> Response + Send + Sync>>;
 
 const HTTP_VERSION: &str = "1.1";
 
@@ -43,13 +46,19 @@ pub struct Response {
     pub body: Vec<u8>,
 }
 impl Response {
-    pub fn new() -> Response {
-        Response {
+    pub fn new() -> Self {
+        Self {
             version: String::from(HTTP_VERSION),
             body: Vec::new(),
             code: super::status::OK,
             headers: HashMap::new(),
         }
+    }
+    pub fn with_text(code: super::status::Status, text: &str) -> Response {
+        let mut response = Response::new();
+        response.code = code;
+        response.set_body(&Vec::from(text));
+        response
     }
     pub fn to_bytes(&self) -> Result<Vec<u8>, Box<dyn std::error::Error>> {
         use std::fmt::Write;
@@ -89,7 +98,7 @@ impl HttpMessage for Response {
 
 struct Parser<'a, T: Read> {
     readable: &'a mut T,
-    machine: StateMachine<fsm::RequestParser>,
+    machine: StateMachine<fsm::RequestMessage>,
 }
 
 impl<'a, T: Read> Parser<'a, T> {
@@ -117,50 +126,50 @@ impl<'a, T: Read> Parser<'a, T> {
             let byte = byte[0];
 
             let effect = if rest_body_size == 0
-                && (self.machine.state() == &fsm::RequestParserState::Lf2
-                    || self.machine.state() == &fsm::RequestParserState::Body)
+                && (self.machine.state() == &fsm::RequestMessageState::Lf2
+                    || self.machine.state() == &fsm::RequestMessageState::Body)
             {
-                self.machine.consume(&fsm::RequestParserInput::End)
+                self.machine.consume(&fsm::RequestMessageInput::End)
             } else {
                 match byte {
-                    b' ' => self.machine.consume(&fsm::RequestParserInput::Blank),
-                    b':' => self.machine.consume(&fsm::RequestParserInput::Colon),
-                    b'\r' => self.machine.consume(&fsm::RequestParserInput::Cr),
-                    b'\n' => self.machine.consume(&fsm::RequestParserInput::Lf),
-                    _ => self.machine.consume(&fsm::RequestParserInput::Alpha),
+                    b' ' => self.machine.consume(&fsm::RequestMessageInput::Blank),
+                    b':' => self.machine.consume(&fsm::RequestMessageInput::Colon),
+                    b'\r' => self.machine.consume(&fsm::RequestMessageInput::Cr),
+                    b'\n' => self.machine.consume(&fsm::RequestMessageInput::Lf),
+                    _ => self.machine.consume(&fsm::RequestMessageInput::Alpha),
                 }
             };
 
             match effect? {
                 Some(effect) => match effect {
-                    fsm::RequestParserOutput::EffectAppendHeader => {
+                    fsm::RequestMessageOutput::EffectAppendHeader => {
                         headers.insert(header_field.clone(), header_value.clone());
                         header_field.clear();
                         header_value.clear();
                     }
-                    fsm::RequestParserOutput::EffectAppendHeaderField => {
+                    fsm::RequestMessageOutput::EffectAppendHeaderField => {
                         header_field.push(char::from(byte));
                     }
-                    fsm::RequestParserOutput::EffectAppendHeaderValue => {
+                    fsm::RequestMessageOutput::EffectAppendHeaderValue => {
                         header_value.push(char::from(byte));
                     }
-                    fsm::RequestParserOutput::EffectAppendMethod => {
+                    fsm::RequestMessageOutput::EffectAppendMethod => {
                         method.push(char::from(byte));
                     }
-                    fsm::RequestParserOutput::EffectAppendPath => {
+                    fsm::RequestMessageOutput::EffectAppendPath => {
                         path.push(char::from(byte));
                     }
-                    fsm::RequestParserOutput::EffectAppendVersion => {
+                    fsm::RequestMessageOutput::EffectAppendVersion => {
                         version.push(char::from(byte));
                     }
                     _ => {
                         match effect {
-                            fsm::RequestParserOutput::EffectCheckEnd => {
+                            fsm::RequestMessageOutput::EffectCheckEnd => {
                                 if let Some(content_length) = headers.get("Content-Length") {
                                     rest_body_size = content_length.parse().unwrap_or(0);
                                 }
                             }
-                            fsm::RequestParserOutput::EffectAppendBody => {
+                            fsm::RequestMessageOutput::EffectAppendBody => {
                                 body.push(byte);
                                 rest_body_size -= 1;
                             }
@@ -174,7 +183,7 @@ impl<'a, T: Read> Parser<'a, T> {
                                 path,
                                 version,
                             };
-                            self.machine.consume(&fsm::RequestParserInput::End)?;
+                            self.machine.consume(&fsm::RequestMessageInput::End)?;
                             return Ok(Some(request));
                         }
                     }
@@ -193,7 +202,7 @@ pub fn consume<T: Write + Read>(
 ) -> Result<(), Box<dyn std::error::Error>> {
     let mut parser = Parser::new(connection);
     if let Some(request) = parser.parse().unwrap() {
-        let response = on_data(request);
+        let response = on_data(Rc::new(RefCell::new(request)));
         connection.write_all(&response.to_bytes().unwrap())?;
     }
     Ok(())
@@ -203,7 +212,7 @@ pub fn consume<T: Write + Read>(
 mod tests {
     use std::{
         cmp,
-        io::{self, Read, Write},
+        io::{self, Write},
     };
 
     use crate::infra::http::{
@@ -215,8 +224,8 @@ mod tests {
         index: usize,
     }
     impl StringStream {
-        fn new(data: &'static str) -> StringStream {
-            StringStream {
+        fn new(data: &'static str) -> Self {
+            Self {
                 data: Vec::from(data),
                 index: 0,
             }
