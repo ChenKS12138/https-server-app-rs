@@ -16,3 +16,6 @@ openssl-sys = "^0.9.72"
 rust-fsm = "^0.6.0"
 serde_json = "^1.0.73"
 threadpool = "^1.8.1"
+
+[target.x86_64-pc-windows-msvc.dependencies]
+fltk = {version = "1.2", features = ["use-ninja"]}
