@@ -46,17 +46,11 @@ pub fn static_middleware(root: String) -> HandleFn {
         "index",
         "{{#> layout title=path }}
 <script>
-function check(message){
-    return function(next,args){
-        if(confirm(message)) {
-            next(args);
-        }
-    }
-}
 function deleteFile(filepath) {
+    if(!confirm('Sure To Delete '+filepath)) return;
     var xhr = new XMLHttpRequest();
     if(onload) {
-        xhr.onload = onload
+        xhr.onload = onload;
     }
     xhr.open(\"delete\",filepath,true);
     xhr.send(null);
@@ -65,6 +59,7 @@ function deleteFile(filepath) {
     }
 }
 function uploadFile(filepath,file,onload){
+    if(!confirm('Sure To Upload '+filepath)) return;
     var xhr = new XMLHttpRequest();
     if(onload) {
         xhr.onload = onload
