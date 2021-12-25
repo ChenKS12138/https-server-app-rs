@@ -240,6 +240,14 @@ mod tests {
             result
         }
     }
+    /// Example
+    /// ```
+    /// GET / HTTP/1.1
+    /// Host: 127.0.0.1:3000
+    /// User-Agent: curl/7.64.1
+    /// Accept: */*
+    ///
+    /// ```
 
     #[test]
     fn parse_request_get() {
@@ -252,6 +260,17 @@ mod tests {
         assert_eq!(request.get_header("User-Agent").unwrap(), "curl/7.64.1");
         assert_eq!(request.get_header("Accept").unwrap(), "*/*");
     }
+    /// Example
+    /// ```
+    /// POST /user HTTP/1.1
+    /// Host: 127.0.0.1:3000
+    /// User-Agent: curl/7.64.1
+    /// Accept: */*
+    /// Content-Type: application/json
+    /// Content-Length: 23
+    ///
+    /// {\"name\":\"tom\",\"age\":21}
+    /// ```
     #[test]
     fn parse_request_post() {
         let mut readable = StringStream::new("POST /user HTTP/1.1\r\nHost: 127.0.0.1:3000\r\nUser-Agent: curl/7.64.1\r\nAccept: */*\r\nContent-Type: application/json\r\nContent-Length: 23\r\n\r\n{\"name\":\"tom\",\"age\":21}");

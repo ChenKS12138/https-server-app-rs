@@ -155,7 +155,29 @@ impl FormData {
 #[cfg(test)]
 mod tests {
     use super::FormData;
-
+    /// Example
+    /// ------WebKitFormBoundarype6X79pAiSSGJJKV
+    /// Content-Disposition: form-data; name="file"; filename="aria2.conf"
+    /// Content-Type: application/octet-stream
+    ///
+    /// # rpc-user=chenks
+    /// # rpc-passwd=749923710
+    /// rpc-secret=token
+    /// enable-rpc=true
+    /// rpc-allow-origin-all=true
+    /// rpc-listen-all=true
+    /// max-concurrent-downloads=5
+    /// continue=true
+    /// max-connection-per-server=5
+    /// min-split-size=10M
+    /// split=10
+    /// max-overall-download-limit=0
+    /// max-download-limit=0
+    /// max-overall-upload-limit=0
+    /// max-upload-limit=0
+    /// dir=/Users/brucezhou/movie
+    /// file-allocation=prealloc
+    /// ------WebKitFormBoundarype6X79pAiSSGJJKV--
     #[test]
     fn test_form_date_parse() {
         let data = vec![
