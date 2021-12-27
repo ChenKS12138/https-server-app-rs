@@ -114,7 +114,7 @@ impl<'a, T: Read> Parser<'a, T> {
         let mut header_field = String::new();
         let mut header_value = String::new();
         let mut method = String::new();
-        let mut path = String::new();
+        let mut path = Vec::new();
         let mut version = String::new();
         let mut rest_body_size = 0_u64;
 
@@ -157,7 +157,7 @@ impl<'a, T: Read> Parser<'a, T> {
                         method.push(char::from(byte));
                     }
                     fsm::RequestMessageOutput::EffectAppendPath => {
-                        path.push(char::from(byte));
+                        path.push(byte);
                     }
                     fsm::RequestMessageOutput::EffectAppendVersion => {
                         version.push(char::from(byte));
@@ -176,11 +176,12 @@ impl<'a, T: Read> Parser<'a, T> {
                             _ => {}
                         }
                         if rest_body_size == 0 {
+                            use urlencoding::decode_binary;
                             let request = super::message::Request {
                                 body,
                                 headers,
                                 method,
-                                path,
+                                path: String::from_utf8(decode_binary(&path.to_owned()).to_vec())?,
                                 version,
                             };
                             self.machine.consume(&fsm::RequestMessageInput::End)?;

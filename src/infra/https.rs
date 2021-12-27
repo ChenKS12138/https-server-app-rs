@@ -56,7 +56,7 @@ impl HttpsServer {
             let pool = ThreadPool::new(num_cpus::get());
 
             // 创建SSL层
-            let mut acceptor = SslAcceptor::mozilla_intermediate(SslMethod::tls()).unwrap();
+            let mut acceptor = SslAcceptor::mozilla_intermediate(SslMethod::tls_server()).unwrap();
             acceptor
                 .set_private_key_file(key, SslFiletype::PEM)
                 .unwrap();
